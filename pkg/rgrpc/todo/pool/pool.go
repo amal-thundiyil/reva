@@ -19,6 +19,9 @@
 package pool
 
 import (
+	// "crypto/tls"
+
+	"crypto/tls"
 	"sync"
 
 	appprovider "github.com/cs3org/go-cs3apis/cs3/app/provider/v1beta1"
@@ -40,9 +43,11 @@ import (
 	storageprovider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
 	storageregistry "github.com/cs3org/go-cs3apis/cs3/storage/registry/v1beta1"
 	datatx "github.com/cs3org/go-cs3apis/cs3/tx/v1beta1"
+	"github.com/cs3org/reva/pkg/sharedconf"
 	rtrace "github.com/cs3org/reva/pkg/trace"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -80,19 +85,24 @@ var (
 	userProviders          = newProvider()
 	groupProviders         = newProvider()
 	dataTxs                = newProvider()
-	maxCallRecvMsgSize     = 10240000
+	// maxCallRecvMsgSize     = 10240000
 )
 
-// NewConn creates a new connection to a grpc server
-// with open census tracing support.
-// TODO(labkode): make grpc tls configurable.
-// TODO make maxCallRecvMsgSize configurable, raised from the default 4MB to be able to list 10k files
+// NewConn creates a new connection to a grpc server with open census tracing support.
 func NewConn(endpoint string) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(
-		endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := handleConnOptions()
+	conn, err := grpc.Dial(endpoint, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+func handleConnOptions() []grpc.DialOption {
+	var opts []grpc.DialOption = []grpc.DialOption{
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(maxCallRecvMsgSize),
+			grpc.MaxCallRecvMsgSize(sharedconf.GetMaxCallRecvMsgSize()),
 		),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor(
 			otelgrpc.WithTracerProvider(
@@ -112,12 +122,18 @@ func NewConn(endpoint string) (*grpc.ClientConn, error) {
 				),
 			),
 		),
-	)
-	if err != nil {
-		return nil, err
 	}
 
-	return conn, nil
+	var creds credentials.TransportCredentials
+	if sharedconf.Insecure() {
+		creds = insecure.NewCredentials()
+	} else {
+		tlsconf := &tls.Config{InsecureSkipVerify: sharedconf.SkipVerify()}
+		creds = credentials.NewTLS(tlsconf)
+
+	}
+	opts = append(opts, grpc.WithTransportCredentials(creds))
+	return opts
 }
 
 // GetGatewayServiceClient returns a GatewayServiceClient.
