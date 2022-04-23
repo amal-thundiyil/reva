@@ -19,8 +19,6 @@
 package pool
 
 import (
-	// "crypto/tls"
-
 	"crypto/tls"
 	"sync"
 
@@ -85,7 +83,6 @@ var (
 	userProviders          = newProvider()
 	groupProviders         = newProvider()
 	dataTxs                = newProvider()
-	// maxCallRecvMsgSize     = 10240000
 )
 
 // NewConn creates a new connection to a grpc server with open census tracing support.
